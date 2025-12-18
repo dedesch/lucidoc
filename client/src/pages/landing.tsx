@@ -17,7 +17,7 @@ export default function Landing() {
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white">
               <Zap className="w-5 h-5 fill-current" />
             </div>
-            MindVault
+            Lucidoc AI
           </div>
           <div className="flex items-center gap-4">
             <Link href="/auth">
@@ -48,7 +48,7 @@ export default function Landing() {
                   Chat with your <span className="text-primary">Company Knowledge</span>
                 </h1>
                 <p className="mt-6 text-xl text-muted-foreground leading-relaxed">
-                  MindVault connects your team's documentation, code, and wikis into a single, intelligent chat interface powered by advanced RAG technology.
+                  Lucidoc AI connects your team's documentation, code, and wikis into a single, intelligent chat interface powered by advanced RAG technology.
                 </p>
               </motion.div>
 
@@ -131,7 +131,7 @@ export default function Landing() {
 
       <footer className="border-t border-border py-12 bg-muted/30">
         <div className="max-w-7xl mx-auto px-4 text-center text-muted-foreground">
-          <p>© 2024 MindVault Inc. All rights reserved.</p>
+          <p>© 2024 Lucidoc Inc. All rights reserved.</p>
         </div>
       </footer>
     </div>

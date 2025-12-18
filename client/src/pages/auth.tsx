@@ -44,14 +44,14 @@ export default function AuthPage() {
             <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
               <Zap className="w-6 h-6 text-white" />
             </div>
-            MindVault
+            Lucidoc AI
           </div>
           
           <h1 className="text-5xl font-bold leading-tight mb-6">
             Unlock your <br/> collective intelligence.
           </h1>
           <p className="text-lg text-primary-foreground/80 max-w-md leading-relaxed">
-            Join thousands of teams using MindVault to turn their scattered documents into actionable insights.
+            Join thousands of teams using Lucidoc AI to turn their scattered documents into actionable insights.
           </p>
         </div>
 

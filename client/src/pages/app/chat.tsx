@@ -174,7 +174,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Message MindVault..."
+                placeholder="Message Lucidoc..."
                 className="min-h-[60px] max-h-[200px] w-full resize-none border-0 bg-transparent py-4 px-4 focus-visible:ring-0 focus-visible:ring-offset-0 text-base"
                 rows={1}
                 style={{ height: 'auto', minHeight: '60px' }}
@@ -196,7 +196,7 @@ export default function ChatPage() {
               </div>
             </motion.div>
             <p className="text-xs text-center text-muted-foreground mt-3">
-              MindVault can make mistakes. Verify important information.
+              Lucidoc AI can make mistakes. Verify important information.
             </p>
           </div>
         </div>

@@ -30,7 +30,7 @@ export function Sidebar({ className }: SidebarProps) {
           <div className="bg-primary text-primary-foreground p-1.5 rounded-lg shadow-lg shadow-primary/25">
             <Command className="w-5 h-5" />
           </div>
-          <span className="font-bold text-lg tracking-tight">MindVault</span>
+          <span className="font-bold text-lg tracking-tight">Lucidoc</span>
         </Link>
         
         <Link href="/app/chat" className="block w-full">
