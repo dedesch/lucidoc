@@ -1,0 +1,101 @@
+You are a senior full-stack engineer. Build an MVP web app for “Lucidoc.ai” in Replit.
+
+Goal:
+After a user signs up or logs in, they land directly in a chat page where they can ask questions and the app calls a backend RAG endpoint. The UX must be clean, simple, and demo-ready.
+
+Tech constraints (Replit-friendly):
+- Use Next.js 14 (App Router) + TypeScript + TailwindCSS.
+- Use a simple auth approach for MVP (email+password) with a Postgres DB via Prisma.
+  - If Postgres isn’t available, fall back to SQLite via Prisma (still works on Replit).
+- Keep everything in one repo, runnable with a single “Run” button.
+- Store sessions with secure HTTP-only cookies.
+- No external auth providers required for MVP.
+- Provide clear setup instructions in README and a `.env.example`.
+
+Core product concepts:
+- Each user has exactly ONE workspace (namespace) for MVP.
+- Namespace should be implicit: show “Workspace: My Documents” (or derived from email/company) in the header.
+- After auth, route to `/app/chat`.
+
+Pages & routes:
+1) `/` → landing (simple, 1 CTA button to login)
+2) `/auth/login` → login form (email, password)
+3) `/auth/register` → register form
+4) `/app/chat` → main chat UI (protected route)
+5) `/app/settings` → minimal profile + logout
+6) API routes:
+   - `POST /api/auth/register`
+   - `POST /api/auth/login`
+   - `POST /api/auth/logout`
+   - `GET  /api/me`
+   - `POST /api/chat` (proxy to RAG backend)
+
+Chat UI requirements (user friendly):
+- Full-page chat (no complex sidebar)
+- Top bar: Lucidoc logo (left), Workspace name (center/left), user menu (right)
+- Chat messages:
+  - user bubbles on right
+  - AI bubbles on left
+  - support markdown in AI answer
+  - show Sources under AI answers (collapsible)
+- Input:
+  - large text box with placeholder “Ask a question about your documents…”
+  - Enter to send, Shift+Enter for newline
+  - disable input while waiting
+  - show “Lucidoc is thinking…” indicator
+- Empty state:
+  - If no prior messages, show friendly welcome + examples (3 sample prompts)
+- Error handling:
+  - show toast/banner if API fails
+  - retry button
+
+Backend integration:
+- The app should call a configurable RAG API endpoint:
+  - Environment variable: `RAG_API_URL`
+  - `POST /api/chat` should forward `{ user_id, tenant_id, message, conversation_id }`
+  - Expect response:
+    `{ answer: string, sources: Array<{title:string,url?:string,score?:number,doc_id?:string,chunk_id?:string}> }`
+- For local testing without a real RAG backend, include a “mock mode”:
+  - `MOCK_RAG=true` returns a dummy answer + 2 dummy sources.
+
+Data model (Prisma):
+- User: id, email (unique), passwordHash, createdAt
+- Workspace: id, userId (unique), name
+- Conversation: id, workspaceId, createdAt
+- Message: id, conversationId, role (“user” | “assistant”), content, createdAt
+- SourceCitation (optional): id, messageId, title, url, score
+
+Implementation tasks:
+1) Initialize Next.js + Tailwind + Prisma.
+2) Implement auth (register/login/logout) with password hashing (bcrypt).
+3) Implement protected routes using a middleware that checks session cookie.
+4) Build chat UI with message list + sources + input composer.
+5) Persist conversations/messages in DB.
+6) Implement `/api/chat` that:
+   - validates session
+   - creates conversation if missing
+   - stores user message
+   - calls RAG backend (or mock)
+   - stores assistant message + sources
+   - returns payload to UI
+7) Add minimal styling and polish (spacing, typography, responsive design).
+8) Provide README with:
+   - how to set env vars
+   - how to run migrations
+   - how to start the app
+   - how to switch MOCK_RAG on/off
+
+Deliverable:
+Generate the full working codebase, including:
+- package.json scripts
+- prisma schema + migration instructions
+- all pages and API routes
+- components for Chat, MessageBubble, SourcesPanel, AuthForm
+- middleware for route protection
+- `.env.example`
+- README
+
+Important:
+- Keep it simple and reliable for demo.
+- Do not over-engineer multi-workspace yet.
+- Ensure the app runs in Replit with minimal steps.
