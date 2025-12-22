@@ -1,0 +1,127 @@
+You are continuing work on my existing Lucidoc.ai Replit project. The frontend already exists (login + chat UI). Do NOT rewrite or replace the UI. Your task is to add the backend so the existing chat page can query my Amazon Bedrock Knowledge Base and display answers + citations.
+
+Primary outcome:
+When I type a message in the chat and click Send, the UI calls a backend endpoint, which queries my Bedrock Knowledge Base (RetrieveAndGenerate), then returns:
+- answer text
+- sources/citations
+and the UI renders them under the assistant response.
+
+---
+
+## 1) First: inspect the existing project
+Before coding, locate:
+- where the chat UI sends requests (e.g. fetch("/api/chat") or similar)
+- the current auth/session approach (if any)
+- any existing API routes folder or server file
+- the current message & sources data structure in the UI
+Then adapt your backend implementation to match the existing frontend contract (or make minimal safe changes to the frontend to align).
+
+Important:
+- Keep changes minimal on the frontend. Prefer to adapt backend to frontend.
+
+---
+
+## 2) Backend requirements
+Add a backend that runs inside this same Replit project.
+
+Use one of these patterns depending on the current repo:
+- If this is Next.js: implement API route `POST /api/chat`
+- If this is Express/Node server: implement route `POST /api/chat`
+Choose the one that fits the repo. Do not migrate the framework.
+
+The backend must:
+- read AWS credentials from Replit Secrets (env vars)
+- call Amazon Bedrock Knowledge Base using RetrieveAndGenerate
+- parse the response and extract citations
+- normalize output for UI
+- return JSON consistently
+
+---
+
+## 3) AWS Integration (Bedrock Knowledge Base)
+Use AWS SDK v3.
+
+Client package:
+- `@aws-sdk/client-bedrock-agent-runtime`
+
+Environment variables (Replit Secrets):
+- AWS_ACCESS_KEY_ID
+- AWS_SECRET_ACCESS_KEY
+- AWS_REGION (e.g. eu-central-1)
+- BEDROCK_KB_ID
+- BEDROCK_MODEL_ARN (or model ID, depending on how the API expects it)
+
+Use RetrieveAndGenerate for MVP so citations are included.
+
+---
+
+## 4) API contract (match the frontend)
+Implement:
+### POST /api/chat
+Request body (adapt if frontend uses different keys):
+{
+  "message": "user text",
+  "conversation_id": "optional",
+  "tenant_id": "optional"
+}
+
+Response body:
+{
+  "answer": "assistant answer string",
+  "sources": [
+    {
+      "title": "string",
+      "url": "optional",
+      "score": 0.0,
+      "source_id": "optional"
+    }
+  ]
+}
+
+Rules:
+- Always return `sources` as an array (never null)
+- If Bedrock returns no citations, return [].
+
+---
+
+## 5) Mock mode (so the app runs without AWS)
+Add env var:
+- MOCK_KB=true
+
+When MOCK_KB=true:
+- do not call AWS
+- return a fake answer + 2 fake sources
+
+This allows me to demo UI without spending money.
+
+---
+
+## 6) Minimal security and robustness
+- Never expose AWS keys to the client
+- Validate input (message required, length limit)
+- Add try/catch and return user-safe errors
+- Log full errors server-side
+
+---
+
+## 7) Deliverables
+You must:
+1) Add the backend implementation files (API route or Express router)
+2) Add/update dependencies in package.json
+3) Add `.env.example` showing required env vars
+4) Update README with:
+   - how to set Replit Secrets
+   - how to test /api/chat (curl example)
+5) Make sure the existing chat UI successfully calls the backend and displays answer + sources.
+   - If UI currently expects a different response shape, make the smallest change needed.
+
+---
+
+## 8) Final verification
+After implementing, show me:
+- which files you changed/added
+- the exact endpoint path used by the frontend
+- an example request/response JSON
+- how to enable MOCK_KB
+
+Now proceed: inspect the project and implement the backend without breaking the frontend.

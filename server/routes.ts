@@ -10,6 +10,7 @@ import bcrypt from "bcryptjs";
 import connectPgSimple from "connect-pg-simple";
 import { pool } from "./db";
 import { sources } from "@shared/schema";
+import { queryBedrock } from "./bedrock";
 
 const PgSession = connectPgSimple(session);
 
@@ -146,25 +147,10 @@ export async function registerRoutes(
         content: message
       });
 
-      // RAG Logic (Mock Mode)
-      // In a real app, fetch from RAG_API_URL
-      const mockMode = process.env.MOCK_RAG === 'true' || true; // Default to mock for MVP reliability
-      
-      let aiResponseText = "";
-      let aiSources: any[] = [];
-
-      if (mockMode) {
-        // Simulate RAG delay
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        aiResponseText = `This is a mock response to your query: "${message}". \n\nI found some relevant information in your documents.`;
-        aiSources = [
-          { title: "Project Requirements.pdf", url: "#", score: 95 },
-          { title: "Meeting Notes 2023.docx", url: "#", score: 82 }
-        ];
-      } else {
-        // Call real RAG API (placeholder)
-        // const response = await fetch(process.env.RAG_API_URL!, ...);
-      }
+      // Query Bedrock Knowledge Base (or mock if MOCK_KB=true)
+      const ragResult = await queryBedrock(message);
+      const aiResponseText = ragResult.answer;
+      const aiSources = ragResult.sources;
 
       // Store AI Message
       const aiMsg = await storage.createMessage({
