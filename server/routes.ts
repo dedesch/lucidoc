@@ -238,7 +238,7 @@ export async function registerRoutes(
     }
 
     try {
-      const result = await queryBedrock("test query", kbId, modelArn);
+      const result = await queryBedrock("What is this knowledge base about?");
       res.json({
         status: "success",
         message: "Bedrock connection works!",
