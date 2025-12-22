@@ -201,5 +201,53 @@ export async function registerRoutes(
     res.json(workspace);
   });
 
+  // === BEDROCK TEST ENDPOINT ===
+  app.get("/api/bedrock-test", isAuthenticated, async (req, res) => {
+    const mockKb = process.env.MOCK_KB === 'true';
+    
+    if (mockKb) {
+      return res.json({
+        status: "mock mode",
+        message: "MOCK_KB is set to true. Switch to false to test real Bedrock."
+      });
+    }
+
+    const kbId = process.env.BEDROCK_KB_ID;
+    const modelArn = process.env.BEDROCK_MODEL_ARN;
+    const region = process.env.AWS_REGION;
+
+    if (!kbId || !modelArn || !region) {
+      return res.json({
+        status: "error",
+        message: "Missing BEDROCK_KB_ID, BEDROCK_MODEL_ARN, or AWS_REGION",
+        kbId: !!kbId,
+        modelArn: !!modelArn,
+        region: !!region
+      });
+    }
+
+    try {
+      const result = await queryBedrock("test query", kbId, modelArn);
+      res.json({
+        status: "success",
+        message: "Bedrock connection works!",
+        modelUsed: modelArn,
+        region,
+        kbId,
+        result
+      });
+    } catch (error: any) {
+      res.json({
+        status: "error",
+        message: error.message,
+        errorCode: error.$fault,
+        modelArn,
+        region,
+        kbId,
+        httpStatusCode: error.$metadata?.httpStatusCode
+      });
+    }
+  });
+
   return httpServer;
 }
