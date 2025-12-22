@@ -8,8 +8,8 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import bcrypt from "bcryptjs";
 import connectPgSimple from "connect-pg-simple";
-import { pool } from "./db";
-import { sources } from "@shared/schema";
+import { pool, db } from "./db";
+import { sources, users } from "@shared/schema";
 import { queryBedrock } from "./bedrock";
 
 const PgSession = connectPgSimple(session);
@@ -213,14 +213,28 @@ export async function registerRoutes(
   });
 
   // === HEALTH CHECK ENDPOINT ===
-  app.get("/api/health", (req, res) => {
+  app.get("/api/health", async (req, res) => {
+    // Check database connection
+    let dbStatus = "unknown";
+    let userCount = 0;
+    try {
+      const result = await db.select().from(users);
+      dbStatus = "connected";
+      userCount = result.length;
+    } catch (e) {
+      dbStatus = "error: " + (e instanceof Error ? e.message : String(e));
+    }
+
     res.json({
       status: "ok",
-      version: "2024-12-22-v2",
+      version: "2024-12-22-v3",
       mockKb: process.env.MOCK_KB,
       hasAwsCreds: !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY),
       hasKbConfig: !!(process.env.BEDROCK_KB_ID && process.env.BEDROCK_MODEL_ARN),
-      region: process.env.AWS_REGION
+      region: process.env.AWS_REGION,
+      dbStatus,
+      userCount,
+      dbHost: process.env.PGHOST ? process.env.PGHOST.substring(0, 20) + "..." : "not set"
     });
   });
 
