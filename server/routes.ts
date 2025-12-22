@@ -46,7 +46,8 @@ export async function registerRoutes(
     usernameField: 'email'
   }, async (email, password, done) => {
     try {
-      const user = await storage.getUserByEmail(email);
+      const normalizedEmail = email.toLowerCase().trim();
+      const user = await storage.getUserByEmail(normalizedEmail);
       if (!user) {
         return done(null, false, { message: 'Incorrect email.' });
       }
@@ -83,18 +84,19 @@ export async function registerRoutes(
   app.post(api.auth.register.path, async (req, res) => {
     try {
       const input = api.auth.register.input.parse(req.body);
-      const existingUser = await storage.getUserByEmail(input.email);
+      const normalizedEmail = input.email.toLowerCase().trim();
+      const existingUser = await storage.getUserByEmail(normalizedEmail);
       if (existingUser) {
         return res.status(400).json({ message: "Email already exists" });
       }
 
       const hashedPassword = await bcrypt.hash(input.password, 10);
-      const user = await storage.createUser({ ...input, password: hashedPassword });
+      const user = await storage.createUser({ ...input, email: normalizedEmail, password: hashedPassword });
       
       // Create default workspace
       await storage.createWorkspace({
         userId: user.id,
-        name: `${input.email.split('@')[0]}'s Workspace`
+        name: `${normalizedEmail.split('@')[0]}'s Workspace`
       });
 
       req.login(user, (err) => {
