@@ -212,6 +212,18 @@ export async function registerRoutes(
     res.json(workspace);
   });
 
+  // === HEALTH CHECK ENDPOINT ===
+  app.get("/api/health", (req, res) => {
+    res.json({
+      status: "ok",
+      version: "2024-12-22-v2",
+      mockKb: process.env.MOCK_KB,
+      hasAwsCreds: !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY),
+      hasKbConfig: !!(process.env.BEDROCK_KB_ID && process.env.BEDROCK_MODEL_ARN),
+      region: process.env.AWS_REGION
+    });
+  });
+
   // === BEDROCK TEST ENDPOINT ===
   app.get("/api/bedrock-test", isAuthenticated, async (req, res) => {
     const mockKb = process.env.MOCK_KB === 'true';
