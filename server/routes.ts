@@ -98,14 +98,18 @@ export async function registerRoutes(
       });
 
       req.login(user, (err) => {
-        if (err) throw err;
+        if (err) {
+          console.error('Login error during registration:', err);
+          throw err;
+        }
         res.status(201).json(user);
       });
     } catch (err) {
+      console.error('Registration error:', err);
       if (err instanceof z.ZodError) {
         res.status(400).json({ message: err.errors[0].message });
       } else {
-        res.status(500).json({ message: "Internal Server Error" });
+        res.status(500).json({ message: (err instanceof Error ? err.message : "Internal Server Error") });
       }
     }
   });
