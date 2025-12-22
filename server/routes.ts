@@ -27,12 +27,11 @@ export async function registerRoutes(
     }),
     secret: process.env.SESSION_SECRET || 'secret',
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true,
     cookie: {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      secure: true,
       httpOnly: true,
-      sameSite: 'none'
+      sameSite: 'lax'
     }
   }));
 
