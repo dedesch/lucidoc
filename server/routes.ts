@@ -20,6 +20,8 @@ export async function registerRoutes(
 ): Promise<Server> {
 
   // === AUTH SETUP ===
+  const isProduction = process.env.NODE_ENV === 'production' || !!process.env.REPLIT_DOMAINS;
+  
   app.use(session({
     store: new PgSession({
       pool,
@@ -28,8 +30,10 @@ export async function registerRoutes(
     secret: process.env.SESSION_SECRET || 'secret',
     resave: false,
     saveUninitialized: true,
+    proxy: isProduction,
     cookie: {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      secure: isProduction,
       httpOnly: true,
       sameSite: 'lax'
     }
