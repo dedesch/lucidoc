@@ -20,9 +20,6 @@ export async function registerRoutes(
 ): Promise<Server> {
 
   // === AUTH SETUP ===
-  // Determine if we're on a secure domain (development or published)
-  const isSecureDomain = app.get('env') === 'production' || !!process.env.REPLIT_DOMAINS;
-  
   app.use(session({
     store: new PgSession({
       pool,
@@ -33,9 +30,9 @@ export async function registerRoutes(
     saveUninitialized: false,
     cookie: {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      secure: isSecureDomain,
+      secure: true,
       httpOnly: true,
-      sameSite: 'lax'
+      sameSite: 'none'
     }
   }));
 
