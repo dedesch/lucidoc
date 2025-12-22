@@ -29,6 +29,7 @@ function getBedrockClient(): BedrockAgentRuntimeClient {
 export async function queryBedrock(userMessage: string): Promise<RAGResponse> {
   // Check if mock mode is enabled
   if (process.env.MOCK_KB === "true") {
+    console.log("Using mock KB mode");
     return getMockResponse(userMessage);
   }
 
@@ -36,6 +37,9 @@ export async function queryBedrock(userMessage: string): Promise<RAGResponse> {
     const client = getBedrockClient();
     const kbId = process.env.BEDROCK_KB_ID;
     const modelArn = process.env.BEDROCK_MODEL_ARN;
+    const region = process.env.AWS_REGION;
+
+    console.log("Bedrock query - Region:", region, "KB ID:", kbId ? "SET" : "MISSING", "Model ARN:", modelArn ? "SET" : "MISSING");
 
     if (!kbId || !modelArn) {
       console.error("Missing BEDROCK_KB_ID or BEDROCK_MODEL_ARN environment variables");
@@ -55,7 +59,9 @@ export async function queryBedrock(userMessage: string): Promise<RAGResponse> {
       },
     });
 
+    console.log("Sending Bedrock command with KB ID:", kbId);
     const response = await client.send(command);
+    console.log("Bedrock response received successfully");
 
     // Extract answer from response
     const answer = response.output?.text || "I could not generate a response.";
@@ -63,6 +69,7 @@ export async function queryBedrock(userMessage: string): Promise<RAGResponse> {
     // Extract sources/citations from retrieval results
     const sources: RAGSource[] = [];
     if (response.retrievalResults && response.retrievalResults.length > 0) {
+      console.log("Retrieved", response.retrievalResults.length, "sources from KB");
       response.retrievalResults.forEach((result) => {
         if (result.location?.s3Location?.uri) {
           sources.push({
@@ -72,12 +79,18 @@ export async function queryBedrock(userMessage: string): Promise<RAGResponse> {
           });
         }
       });
+    } else {
+      console.log("No retrieval results in Bedrock response");
     }
 
     return { answer, sources };
   } catch (error) {
-    console.error("Bedrock API error:", error);
+    console.error("Bedrock API error:", error instanceof Error ? error.message : String(error));
+    if (error instanceof Error && error.stack) {
+      console.error("Stack trace:", error.stack);
+    }
     // Fall back to mock on error
+    console.log("Falling back to mock response due to error");
     return getMockResponse(userMessage);
   }
 }
