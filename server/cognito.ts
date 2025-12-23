@@ -7,13 +7,22 @@ import {
   GlobalSignOutCommand,
   type AuthFlowType,
 } from "@aws-sdk/client-cognito-identity-provider";
+import crypto from "crypto";
 
 const client = new CognitoIdentityProviderClient({
   region: process.env.AWS_REGION || "eu-central-1",
 });
 
 const clientId = process.env.COGNITO_CLIENT_ID;
+const clientSecret = process.env.COGNITO_CLIENT_SECRET;
 const userPoolId = process.env.COGNITO_USER_POOL_ID;
+
+function computeSecretHash(username: string): string | undefined {
+  if (!clientSecret || !clientId) return undefined;
+  const hmac = crypto.createHmac("sha256", clientSecret);
+  hmac.update(username + clientId);
+  return hmac.digest("base64");
+}
 
 export interface CognitoTokens {
   idToken: string;
@@ -31,12 +40,16 @@ export interface CognitoUser {
 export async function cognitoRegister(email: string, password: string): Promise<{ userSub: string; userConfirmed: boolean }> {
   if (!clientId) throw new Error("COGNITO_CLIENT_ID not configured");
 
+  const username = email.toLowerCase().trim();
+  const secretHash = computeSecretHash(username);
+
   const command = new SignUpCommand({
     ClientId: clientId,
-    Username: email.toLowerCase().trim(),
+    Username: username,
     Password: password,
+    SecretHash: secretHash,
     UserAttributes: [
-      { Name: "email", Value: email.toLowerCase().trim() },
+      { Name: "email", Value: username },
     ],
   });
 
@@ -51,10 +64,14 @@ export async function cognitoRegister(email: string, password: string): Promise<
 export async function cognitoConfirmSignUp(email: string, code: string): Promise<void> {
   if (!clientId) throw new Error("COGNITO_CLIENT_ID not configured");
 
+  const username = email.toLowerCase().trim();
+  const secretHash = computeSecretHash(username);
+
   const command = new ConfirmSignUpCommand({
     ClientId: clientId,
-    Username: email.toLowerCase().trim(),
+    Username: username,
     ConfirmationCode: code,
+    SecretHash: secretHash,
   });
 
   await client.send(command);
@@ -63,13 +80,21 @@ export async function cognitoConfirmSignUp(email: string, code: string): Promise
 export async function cognitoLogin(email: string, password: string): Promise<CognitoTokens> {
   if (!clientId) throw new Error("COGNITO_CLIENT_ID not configured");
 
+  const username = email.toLowerCase().trim();
+  const secretHash = computeSecretHash(username);
+
+  const authParams: Record<string, string> = {
+    USERNAME: username,
+    PASSWORD: password,
+  };
+  if (secretHash) {
+    authParams.SECRET_HASH = secretHash;
+  }
+
   const command = new InitiateAuthCommand({
     AuthFlow: "USER_PASSWORD_AUTH" as AuthFlowType,
     ClientId: clientId,
-    AuthParameters: {
-      USERNAME: email.toLowerCase().trim(),
-      PASSWORD: password,
-    },
+    AuthParameters: authParams,
   });
 
   const response = await client.send(command);
@@ -86,15 +111,23 @@ export async function cognitoLogin(email: string, password: string): Promise<Cog
   };
 }
 
-export async function cognitoRefreshToken(refreshToken: string): Promise<CognitoTokens> {
+export async function cognitoRefreshToken(refreshToken: string, username?: string): Promise<CognitoTokens> {
   if (!clientId) throw new Error("COGNITO_CLIENT_ID not configured");
+
+  const authParams: Record<string, string> = {
+    REFRESH_TOKEN: refreshToken,
+  };
+  if (clientSecret && username) {
+    const secretHash = computeSecretHash(username);
+    if (secretHash) {
+      authParams.SECRET_HASH = secretHash;
+    }
+  }
 
   const command = new InitiateAuthCommand({
     AuthFlow: "REFRESH_TOKEN_AUTH" as AuthFlowType,
     ClientId: clientId,
-    AuthParameters: {
-      REFRESH_TOKEN: refreshToken,
-    },
+    AuthParameters: authParams,
   });
 
   const response = await client.send(command);
