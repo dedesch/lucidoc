@@ -1,0 +1,124 @@
+```text
+You are continuing my existing Replit project (Lucidoc.ai). The frontend and chat already work. Do NOT rewrite the whole app. Your task is to CHANGE the authentication method to AWS Cognito and wire it into the existing UI + backend with minimal changes.
+
+Goal:
+- Users can Register / Login using AWS Cognito User Pool (email + password).
+- After login, user is redirected to the existing chat page.
+- The chat API calls are authorized with a Cognito JWT (Authorization: Bearer <token>).
+- Backend verifies the JWT and extracts user_id (sub) and tenant/workspace identifier.
+
+Constraints:
+- Keep the current routes/pages and UI structure.
+- Prefer incremental edits over refactors.
+- Keep the existing chat page UX unchanged.
+- Store tokens securely (prefer HttpOnly cookie session if feasible; localStorage acceptable for MVP but document the risk).
+- The backend must never trust tenant_id sent by the client; it must derive tenant_id from the verified token.
+
+Assumptions:
+- This Replit app is either:
+  A) Next.js (App Router) with API routes, OR
+  B) Node/Express backend.
+Detect which it is and implement using the existing framework. Do not migrate frameworks.
+
+Environment variables (Replit Secrets) you must add support for:
+- AWS_REGION=eu-central-1
+- COGNITO_USER_POOL_ID=xxxx
+- COGNITO_CLIENT_ID=xxxx
+- (optional if using hosted UI) COGNITO_DOMAIN=xxxx
+- (optional) COGNITO_REDIRECT_URI=http://localhost:3000/auth/callback  (or Replit URL)
+- (optional) COGNITO_LOGOUT_URI=http://localhost:3000/
+
+Auth approach:
+Use Cognito User Pool via AWS SDK v3 Cognito Identity Provider:
+- Register: SignUpCommand
+- Confirm: optional (if email verification enabled; implement confirm code screen)
+- Login: InitiateAuthCommand (USER_PASSWORD_AUTH or SRP if required by pool settings)
+- Refresh: optional for MVP
+Return and store:
+- id_token (JWT)
+- access_token
+- refresh_token (if provided)
+
+UI work (minimal required):
+1) Update existing Register page:
+   - Call backend route POST /api/auth/register
+2) Update existing Login page:
+   - Call backend route POST /api/auth/login
+3) Add a simple Confirm page if needed:
+   - /auth/confirm (email + code) calling POST /api/auth/confirm
+4) Ensure post-login redirect goes to the existing chat page (e.g., /app/chat).
+5) Add Logout:
+   - POST /api/auth/logout clears cookie/token and redirects to login.
+
+Backend work (core required):
+Implement these endpoints:
+- POST /api/auth/register
+  body: { email, password }
+  -> creates Cognito user (SignUp)
+- POST /api/auth/confirm   (only if pool requires confirmation)
+  body: { email, code }
+  -> ConfirmSignUp
+- POST /api/auth/login
+  body: { email, password }
+  -> InitiateAuth, returns tokens
+- POST /api/auth/logout
+  -> clears stored token/cookie
+- GET /api/me
+  -> returns { user_id, email, tenant_id } from verified token
+
+Token storage choice:
+Preferred: store id_token in an HttpOnly cookie:
+- Set cookie: lucidoc_token=<id_token>; HttpOnly; Secure; SameSite=Lax
+Fallback: store token in memory/localStorage and send as Authorization header from frontend (document it).
+
+JWT verification (must implement):
+- Verify Cognito JWT signature using JWKS:
+  - fetch JWKS from https://cognito-idp.<region>.amazonaws.com/<userPoolId>/.well-known/jwks.json
+- Validate:
+  - issuer (iss)
+  - audience (aud == client_id)
+  - token use (id or access token)
+  - exp
+- Extract:
+  - sub as user_id
+  - email
+- Tenant model for MVP:
+  - tenant_id = sub (one tenant per user) unless there is an existing workspace mapping
+  - Put tenant_id into req.context for use in /api/chat
+
+Integrate with existing chat endpoint:
+- Modify the existing POST /api/chat so it:
+  1) Requires authentication
+  2) Verifies JWT
+  3) Derives tenant_id from token (NOT from client body)
+  4) Calls Bedrock Knowledge Base with that tenant_id (even if filtering is not implemented yet, at minimum include tenant_id in logs and response)
+
+Dependencies:
+- Use AWS SDK v3: @aws-sdk/client-cognito-identity-provider
+- Use a JWT/JWKS verifier library suitable for Node (preferred) OR implement verification carefully.
+  Acceptable libraries:
+  - jose (recommended)
+  - jsonwebtoken + jwks-rsa
+Choose one and keep it simple.
+
+Deliverables:
+1) Code changes only (no full rewrite)
+2) Add/update:
+   - .env.example with Cognito vars
+   - README section: “Auth with Cognito”
+3) Show the exact files modified and explain how to configure Cognito settings.
+4) Provide a quick test plan:
+   - register -> confirm -> login -> open chat -> send message -> success
+   - logout -> access chat -> redirected to login
+
+Important:
+- Keep the existing UI styling and layout.
+- Ensure errors are user-friendly (wrong password, user not confirmed, etc.)
+- Do not expose AWS credentials to the client.
+
+Now:
+1) Inspect the repo to identify the current auth flow and where chat calls happen.
+2) Implement Cognito auth endpoints.
+3) Wire the frontend to those endpoints with minimal UI changes.
+4) Protect /app/chat (or equivalent) so it requires auth.
+```
