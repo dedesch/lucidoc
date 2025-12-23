@@ -1,169 +1,287 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { api, errorSchemas } from "@shared/routes";
 import { z } from "zod";
-import session from "express-session";
-import passport from "passport";
-import { Strategy as LocalStrategy } from "passport-local";
-import bcrypt from "bcryptjs";
-import connectPgSimple from "connect-pg-simple";
+import cookieParser from "cookie-parser";
 import { pool, db } from "./db";
 import { sources, users } from "@shared/schema";
 import { queryBedrock } from "./bedrock";
+import { 
+  cognitoRegister, 
+  cognitoConfirmSignUp, 
+  cognitoLogin, 
+  cognitoGetUser,
+  getCognitoConfig
+} from "./cognito";
+import { verifyIdToken, type CognitoJWTPayload } from "./jwt-verify";
 
-const PgSession = connectPgSimple(session);
+interface AuthenticatedRequest extends Request {
+  cognitoUser?: {
+    userId: string;
+    email: string;
+    tenantId: string;
+  };
+  localUser?: {
+    id: number;
+    email: string;
+  };
+}
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
 
-  // === AUTH SETUP ===
   const isProduction = process.env.NODE_ENV === 'production' || !!process.env.REPLIT_DOMAINS;
   
-  app.use(session({
-    store: new PgSession({
-      pool,
-      tableName: 'session'
-    }),
-    secret: process.env.SESSION_SECRET || 'secret',
-    resave: false,
-    saveUninitialized: true,
-    proxy: isProduction,
-    cookie: {
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      secure: isProduction,
-      httpOnly: true,
-      sameSite: 'lax'
+  app.use(cookieParser());
+
+  const isAuthenticated = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const token = req.cookies?.lucidoc_token || req.headers.authorization?.replace("Bearer ", "");
+    
+    if (!token) {
+      return res.status(401).json({ message: "No authentication token provided" });
     }
-  }));
 
-  app.use(passport.initialize());
-  app.use(passport.session());
-
-  passport.use(new LocalStrategy({
-    usernameField: 'email'
-  }, async (email, password, done) => {
     try {
-      const normalizedEmail = email.toLowerCase().trim();
-      const user = await storage.getUserByEmail(normalizedEmail);
-      if (!user) {
-        return done(null, false, { message: 'Incorrect email.' });
+      const payload = await verifyIdToken(token);
+      
+      req.cognitoUser = {
+        userId: payload.sub,
+        email: payload.email || payload["cognito:username"] || "",
+        tenantId: payload.sub,
+      };
+
+      const localUser = await storage.getUserByEmail(req.cognitoUser.email);
+      if (localUser) {
+        req.localUser = { id: localUser.id, email: localUser.email };
       }
-      if (!await bcrypt.compare(password, user.password)) {
-        return done(null, false, { message: 'Incorrect password.' });
-      }
-      return done(null, user);
-    } catch (err) {
-      return done(err);
+      
+      next();
+    } catch (error) {
+      console.error("Auth error:", error instanceof Error ? error.message : error);
+      return res.status(401).json({ message: "Invalid or expired token" });
     }
-  }));
-
-  passport.serializeUser((user: any, done) => {
-    done(null, user.id);
-  });
-
-  passport.deserializeUser(async (id: number, done) => {
-    try {
-      const user = await storage.getUser(id);
-      done(null, user);
-    } catch (err) {
-      done(err);
-    }
-  });
-
-  const isAuthenticated = (req: any, res: any, next: any) => {
-    if (req.isAuthenticated()) return next();
-    res.status(401).json({ message: "Unauthorized" });
   };
 
-  // === API ROUTES ===
+  // === AUTH ROUTES (Cognito) ===
 
-  // Auth Routes
   app.post(api.auth.register.path, async (req, res) => {
     try {
       const input = api.auth.register.input.parse(req.body);
       const normalizedEmail = input.email.toLowerCase().trim();
-      const existingUser = await storage.getUserByEmail(normalizedEmail);
-      if (existingUser) {
-        return res.status(400).json({ message: "Email already exists" });
-      }
 
-      const hashedPassword = await bcrypt.hash(input.password, 10);
-      const user = await storage.createUser({ ...input, email: normalizedEmail, password: hashedPassword });
+      const result = await cognitoRegister(normalizedEmail, input.password);
       
-      // Create default workspace
-      await storage.createWorkspace({
-        userId: user.id,
-        name: `${normalizedEmail.split('@')[0]}'s Workspace`
-      });
-
-      req.login(user, (err) => {
-        if (err) {
-          console.error('Login error during registration:', err);
-          throw err;
+      if (result.userConfirmed) {
+        const tokens = await cognitoLogin(normalizedEmail, input.password);
+        
+        let localUser = await storage.getUserByEmail(normalizedEmail);
+        if (!localUser) {
+          localUser = await storage.createUser({ 
+            email: normalizedEmail, 
+            password: "cognito-managed" 
+          });
+          await storage.createWorkspace({
+            userId: localUser.id,
+            name: `${normalizedEmail.split('@')[0]}'s Workspace`
+          });
         }
-        res.status(201).json(user);
-      });
-    } catch (err) {
-      console.error('Registration error:', err);
-      if (err instanceof z.ZodError) {
-        res.status(400).json({ message: err.errors[0].message });
+
+        res.cookie("lucidoc_token", tokens.idToken, {
+          httpOnly: true,
+          secure: isProduction,
+          sameSite: "lax",
+          maxAge: tokens.expiresIn * 1000,
+        });
+
+        res.cookie("lucidoc_access_token", tokens.accessToken, {
+          httpOnly: true,
+          secure: isProduction,
+          sameSite: "lax",
+          maxAge: tokens.expiresIn * 1000,
+        });
+
+        res.status(201).json({ 
+          id: localUser.id, 
+          email: localUser.email,
+          confirmed: true 
+        });
       } else {
-        res.status(500).json({ message: (err instanceof Error ? err.message : "Internal Server Error") });
+        res.status(201).json({ 
+          email: normalizedEmail,
+          confirmed: false,
+          message: "Please check your email for a verification code" 
+        });
       }
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      
+      if (err.name === "UsernameExistsException") {
+        return res.status(400).json({ message: "An account with this email already exists" });
+      }
+      if (err.name === "InvalidPasswordException") {
+        return res.status(400).json({ message: "Password does not meet requirements (min 8 chars, uppercase, lowercase, number)" });
+      }
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      
+      res.status(500).json({ message: err.message || "Registration failed" });
     }
   });
 
-  app.post(api.auth.login.path, passport.authenticate('local'), (req, res) => {
-    res.json(req.user);
+  app.post("/api/auth/confirm", async (req, res) => {
+    try {
+      const { email, code } = req.body;
+      
+      if (!email || !code) {
+        return res.status(400).json({ message: "Email and confirmation code are required" });
+      }
+
+      const normalizedEmail = email.toLowerCase().trim();
+      await cognitoConfirmSignUp(normalizedEmail, code);
+      
+      res.json({ message: "Email confirmed successfully. You can now log in." });
+    } catch (err: any) {
+      console.error('Confirm error:', err);
+      
+      if (err.name === "CodeMismatchException") {
+        return res.status(400).json({ message: "Invalid confirmation code" });
+      }
+      if (err.name === "ExpiredCodeException") {
+        return res.status(400).json({ message: "Confirmation code has expired" });
+      }
+      
+      res.status(500).json({ message: err.message || "Confirmation failed" });
+    }
+  });
+
+  app.post(api.auth.login.path, async (req, res) => {
+    try {
+      const input = api.auth.login.input.parse(req.body);
+      const normalizedEmail = input.email.toLowerCase().trim();
+
+      const tokens = await cognitoLogin(normalizedEmail, input.password);
+      
+      let localUser = await storage.getUserByEmail(normalizedEmail);
+      if (!localUser) {
+        localUser = await storage.createUser({ 
+          email: normalizedEmail, 
+          password: "cognito-managed" 
+        });
+        await storage.createWorkspace({
+          userId: localUser.id,
+          name: `${normalizedEmail.split('@')[0]}'s Workspace`
+        });
+      }
+
+      res.cookie("lucidoc_token", tokens.idToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: "lax",
+        maxAge: tokens.expiresIn * 1000,
+      });
+
+      res.cookie("lucidoc_access_token", tokens.accessToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: "lax",
+        maxAge: tokens.expiresIn * 1000,
+      });
+
+      if (tokens.refreshToken) {
+        res.cookie("lucidoc_refresh_token", tokens.refreshToken, {
+          httpOnly: true,
+          secure: isProduction,
+          sameSite: "lax",
+          maxAge: 30 * 24 * 60 * 60 * 1000,
+        });
+      }
+
+      res.json({ id: localUser.id, email: localUser.email });
+    } catch (err: any) {
+      console.error('Login error:', err);
+      
+      if (err.name === "NotAuthorizedException") {
+        return res.status(401).json({ message: "Incorrect email or password" });
+      }
+      if (err.name === "UserNotConfirmedException") {
+        return res.status(400).json({ 
+          message: "Please confirm your email address first",
+          needsConfirmation: true 
+        });
+      }
+      if (err.name === "UserNotFoundException") {
+        return res.status(401).json({ message: "Incorrect email or password" });
+      }
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      
+      res.status(500).json({ message: err.message || "Login failed" });
+    }
   });
 
   app.post(api.auth.logout.path, (req, res) => {
-    req.logout((err) => {
-      if (err) return res.status(500).json({ message: "Logout failed" });
-      res.sendStatus(200);
+    res.clearCookie("lucidoc_token");
+    res.clearCookie("lucidoc_access_token");
+    res.clearCookie("lucidoc_refresh_token");
+    res.sendStatus(200);
+  });
+
+  app.get(api.auth.me.path, isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    if (!req.cognitoUser) {
+      return res.sendStatus(401);
+    }
+    
+    const localUser = req.localUser || await storage.getUserByEmail(req.cognitoUser.email);
+    
+    res.json({
+      id: localUser?.id || 0,
+      email: req.cognitoUser.email,
+      cognitoUserId: req.cognitoUser.userId,
+      tenantId: req.cognitoUser.tenantId,
     });
   });
 
-  app.get(api.auth.me.path, (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
-    res.json(req.user);
-  });
+  // === CHAT ROUTES ===
 
-  // Chat Routes
-  app.post(api.chat.send.path, isAuthenticated, async (req, res) => {
+  app.post(api.chat.send.path, isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const { message, conversationId } = api.chat.send.input.parse(req.body);
-      const user = req.user as any;
+      
+      if (!req.localUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      const userId = req.localUser.id;
+      const tenantId = req.cognitoUser?.tenantId || String(userId);
 
       let convId = conversationId;
       if (!convId) {
-        // Create new conversation
-        const conv = await storage.createConversation(user.id, message.substring(0, 30) + "...");
+        const conv = await storage.createConversation(userId, message.substring(0, 30) + "...");
         convId = conv.id;
       } else {
-        // Verify ownership
         const conv = await storage.getConversation(convId);
         if (!conv) return res.status(404).json({ message: "Conversation not found" });
         const workspace = await storage.getWorkspace(conv.workspaceId);
-        if (workspace?.userId !== user.id) return res.status(403).json({ message: "Forbidden" });
+        if (workspace?.userId !== userId) return res.status(403).json({ message: "Forbidden" });
       }
 
-      // Store User Message
       const userMsg = await storage.createMessage({
         conversationId: convId!,
         role: "user",
         content: message
       });
 
-      // Query Bedrock Knowledge Base (or mock if MOCK_KB=true)
+      console.log(`[Chat] tenant=${tenantId} user=${userId} conv=${convId}`);
+      
       const ragResult = await queryBedrock(message);
       const aiResponseText = ragResult.answer;
       const aiSources = ragResult.sources;
 
-      // Store AI Message
       const aiMsg = await storage.createMessage({
         conversationId: convId!,
         role: "assistant",
@@ -177,44 +295,46 @@ export async function registerRoutes(
       });
 
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Failed to process message" });
+      console.error(err);
+      res.status(500).json({ message: "Failed to process message" });
     }
   });
 
-  app.get(api.chat.history.path, isAuthenticated, async (req, res) => {
-    const user = req.user as any;
+  app.get(api.chat.history.path, isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    if (!req.localUser) return res.status(401).json({ message: "User not found" });
+    
+    const userId = req.localUser.id;
     const convId = parseInt(req.params.id);
     const conv = await storage.getConversation(convId);
     
     if (!conv) return res.status(404).json({ message: "Conversation not found" });
     
-    // Check ownership
     const workspace = await storage.getWorkspace(conv.workspaceId);
-    if (workspace?.userId !== user.id) return res.status(403).json({ message: "Forbidden" });
+    if (workspace?.userId !== userId) return res.status(403).json({ message: "Forbidden" });
 
     const messages = await storage.getMessages(convId);
     res.json({ ...conv, messages });
   });
 
-  app.get(api.chat.list.path, isAuthenticated, async (req, res) => {
-    const user = req.user as any;
-    const workspace = await storage.getWorkspaceByUserId(user.id);
+  app.get(api.chat.list.path, isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    if (!req.localUser) return res.status(401).json({ message: "User not found" });
+    
+    const workspace = await storage.getWorkspaceByUserId(req.localUser.id);
     if (!workspace) return res.json([]);
     
     const conversations = await storage.getConversations(workspace.id);
     res.json(conversations);
   });
 
-  app.get(api.workspace.get.path, isAuthenticated, async (req, res) => {
-    const user = req.user as any;
-    const workspace = await storage.getWorkspaceByUserId(user.id);
+  app.get(api.workspace.get.path, isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    if (!req.localUser) return res.status(401).json({ message: "User not found" });
+    
+    const workspace = await storage.getWorkspaceByUserId(req.localUser.id);
     res.json(workspace);
   });
 
   // === HEALTH CHECK ENDPOINT ===
   app.get("/api/health", async (req, res) => {
-    // Check database connection
     let dbStatus = "unknown";
     let userCount = 0;
     try {
@@ -225,9 +345,13 @@ export async function registerRoutes(
       dbStatus = "error: " + (e instanceof Error ? e.message : String(e));
     }
 
+    const cognitoConfig = getCognitoConfig();
+
     res.json({
       status: "ok",
-      version: "2024-12-22-v3",
+      version: "2024-12-22-v4-cognito",
+      auth: "cognito",
+      cognitoConfigured: cognitoConfig.configured,
       mockKb: process.env.MOCK_KB,
       hasAwsCreds: !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY),
       hasKbConfig: !!(process.env.BEDROCK_KB_ID && process.env.BEDROCK_MODEL_ARN),
