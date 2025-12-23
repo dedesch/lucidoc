@@ -40,7 +40,7 @@ export async function cognitoRegister(email: string, password: string): Promise<
     ],
   });
 
-  const response = await command.send ? await client.send(command) : await client.send(command);
+  const response = await client.send(command);
   
   return {
     userSub: response.UserSub || "",

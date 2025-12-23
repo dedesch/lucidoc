@@ -1,8 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type AuthRequest } from "@shared/routes";
+import { api } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { useState } from "react";
+
+interface AuthRequest {
+  email: string;
+  password: string;
+}
 
 interface RegisterResponse {
   id?: number;
