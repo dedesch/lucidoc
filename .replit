@@ -42,3 +42,6 @@ waitForPort = 5000
 
 [userenv.shared]
 MOCK_KB = "false"
+
+[agent]
+integrations = ["github:1.0.0"]
