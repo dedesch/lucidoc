@@ -349,7 +349,7 @@ export async function registerRoutes(
 
     res.json({
       status: "ok",
-      version: "2024-12-22-v4-cognito",
+      version: "2025-01-09-v1-bedrock-fix",
       auth: "cognito",
       cognitoConfigured: cognitoConfig.configured,
       mockKb: process.env.MOCK_KB,
