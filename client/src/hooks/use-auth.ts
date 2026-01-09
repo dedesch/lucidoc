@@ -144,7 +144,7 @@ export function useAuth() {
       }
       return data;
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       const email = pendingConfirmEmail;
       const password = pendingPassword;
       
@@ -153,29 +153,35 @@ export function useAuth() {
       setPendingPassword(null);
       
       if (email && password) {
-        try {
-          const res = await fetch(api.auth.login.path, {
-            method: api.auth.login.method,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password }),
-            credentials: "include",
-          });
-          
-          if (res.ok) {
-            const data = await res.json();
+        fetch(api.auth.login.path, {
+          method: api.auth.login.method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+          credentials: "include",
+        })
+          .then(res => {
+            if (res.ok) {
+              return res.json();
+            }
+            throw new Error("Login failed");
+          })
+          .then(data => {
             queryClient.setQueryData([api.auth.me.path], data);
             toast({ title: "Welcome!", description: "Your account is verified and you're now logged in." });
             setLocation("/app/chat");
-            return;
-          }
-        } catch {
-        }
+          })
+          .catch(() => {
+            toast({ 
+              title: "Email verified!", 
+              description: "Please log in with your credentials." 
+            });
+          });
+      } else {
+        toast({ 
+          title: "Email verified!", 
+          description: "Please log in with your credentials." 
+        });
       }
-      
-      toast({ 
-        title: "Email verified!", 
-        description: "Please log in with your credentials." 
-      });
     },
     onError: (error: Error) => {
       toast({ 
