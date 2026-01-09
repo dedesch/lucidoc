@@ -8,6 +8,7 @@ import {
   type AuthFlowType,
 } from "@aws-sdk/client-cognito-identity-provider";
 import crypto from "crypto";
+import { randomUUID } from "crypto";
 
 const client = new CognitoIdentityProviderClient({
   region: process.env.AWS_REGION || "eu-central-1",
@@ -40,7 +41,9 @@ export interface CognitoUser {
 export async function cognitoRegister(email: string, password: string): Promise<{ userSub: string; userConfirmed: boolean }> {
   if (!clientId) throw new Error("COGNITO_CLIENT_ID not configured");
 
-  const username = email.toLowerCase().trim();
+  const normalizedEmail = email.toLowerCase().trim();
+  // Use UUID as username since pool is configured with email as alias
+  const username = randomUUID();
   const secretHash = computeSecretHash(username);
 
   const command = new SignUpCommand({
@@ -49,7 +52,7 @@ export async function cognitoRegister(email: string, password: string): Promise<
     Password: password,
     SecretHash: secretHash,
     UserAttributes: [
-      { Name: "email", Value: username },
+      { Name: "email", Value: normalizedEmail },
     ],
   });
 
