@@ -30,6 +30,7 @@ export function useAuth() {
   const queryClient = useQueryClient();
   const [pendingConfirmEmail, setPendingConfirmEmail] = useState<string | null>(null);
   const [pendingConfirmUsername, setPendingConfirmUsername] = useState<string | null>(null);
+  const [pendingPassword, setPendingPassword] = useState<string | null>(null);
 
   const { data: user, isLoading, error } = useQuery({
     queryKey: [api.auth.me.path],
@@ -115,6 +116,9 @@ export function useAuth() {
         });
       }
     },
+    onMutate: (credentials) => {
+      setPendingPassword(credentials.password);
+    },
     onError: (error: Error) => {
       toast({ 
         title: "Registration Failed", 
@@ -140,12 +144,37 @@ export function useAuth() {
       }
       return data;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      const email = pendingConfirmEmail;
+      const password = pendingPassword;
+      
       setPendingConfirmEmail(null);
       setPendingConfirmUsername(null);
+      setPendingPassword(null);
+      
+      if (email && password) {
+        try {
+          const res = await fetch(api.auth.login.path, {
+            method: api.auth.login.method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+            credentials: "include",
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            queryClient.setQueryData([api.auth.me.path], data);
+            toast({ title: "Welcome!", description: "Your account is verified and you're now logged in." });
+            setLocation("/app/chat");
+            return;
+          }
+        } catch {
+        }
+      }
+      
       toast({ 
         title: "Email verified!", 
-        description: "You can now log in with your credentials." 
+        description: "Please log in with your credentials." 
       });
     },
     onError: (error: Error) => {
@@ -174,6 +203,7 @@ export function useAuth() {
   const clearPendingConfirm = () => {
     setPendingConfirmEmail(null);
     setPendingConfirmUsername(null);
+    setPendingPassword(null);
   };
 
   return {
