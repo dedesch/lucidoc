@@ -27,24 +27,32 @@ function getBedrockClient(): BedrockAgentRuntimeClient {
 }
 
 export async function queryBedrock(userMessage: string): Promise<RAGResponse> {
+  const kbId = process.env.BEDROCK_KB_ID;
+  const modelArn = process.env.BEDROCK_MODEL_ARN;
+  const region = process.env.AWS_REGION;
+  const mockMode = process.env.MOCK_KB;
+  
+  console.log("[Bedrock] Configuration check:");
+  console.log("  - MOCK_KB:", mockMode);
+  console.log("  - AWS_REGION:", region || "NOT SET");
+  console.log("  - BEDROCK_KB_ID:", kbId ? `SET (${kbId.substring(0, 8)}...)` : "NOT SET");
+  console.log("  - BEDROCK_MODEL_ARN:", modelArn ? "SET" : "NOT SET");
+  console.log("  - AWS_ACCESS_KEY_ID:", process.env.AWS_ACCESS_KEY_ID ? "SET" : "NOT SET");
+  console.log("  - AWS_SECRET_ACCESS_KEY:", process.env.AWS_SECRET_ACCESS_KEY ? "SET" : "NOT SET");
+  
   // Check if mock mode is enabled
-  if (process.env.MOCK_KB === "true") {
-    console.log("Using mock KB mode");
+  if (mockMode === "true") {
+    console.log("[Bedrock] Using mock KB mode (MOCK_KB=true)");
+    return getMockResponse(userMessage);
+  }
+
+  if (!kbId || !modelArn) {
+    console.error("[Bedrock] Missing required environment variables - falling back to mock");
     return getMockResponse(userMessage);
   }
 
   try {
     const client = getBedrockClient();
-    const kbId = process.env.BEDROCK_KB_ID;
-    const modelArn = process.env.BEDROCK_MODEL_ARN;
-    const region = process.env.AWS_REGION;
-
-    console.log("Bedrock query - Region:", region, "KB ID:", kbId ? "SET" : "MISSING", "Model ARN:", modelArn ? "SET" : "MISSING");
-
-    if (!kbId || !modelArn) {
-      console.error("Missing BEDROCK_KB_ID or BEDROCK_MODEL_ARN environment variables");
-      return getMockResponse(userMessage);
-    }
 
     const command = new RetrieveAndGenerateCommand({
       input: {
@@ -66,21 +74,23 @@ export async function queryBedrock(userMessage: string): Promise<RAGResponse> {
     // Extract answer from response
     const answer = response.output?.text || "I could not generate a response.";
 
-    // Extract sources/citations from retrieval results
+    // Extract sources/citations from response
     const sources: RAGSource[] = [];
-    if (response.retrievalResults && response.retrievalResults.length > 0) {
-      console.log("Retrieved", response.retrievalResults.length, "sources from KB");
-      response.retrievalResults.forEach((result) => {
-        if (result.location?.s3Location?.uri) {
-          sources.push({
-            title: extractFilenameFromS3Uri(result.location.s3Location.uri),
-            url: result.location.s3Location.uri,
-            score: result.score ? Math.round(result.score * 100) : undefined,
-          });
-        }
+    if (response.citations && response.citations.length > 0) {
+      console.log("Retrieved", response.citations.length, "citations from KB");
+      response.citations.forEach((citation) => {
+        citation.retrievedReferences?.forEach((ref) => {
+          if (ref.location?.s3Location?.uri) {
+            sources.push({
+              title: extractFilenameFromS3Uri(ref.location.s3Location.uri),
+              url: ref.location.s3Location.uri,
+              score: undefined,
+            });
+          }
+        });
       });
     } else {
-      console.log("No retrieval results in Bedrock response");
+      console.log("No citations in Bedrock response");
     }
 
     return { answer, sources };
