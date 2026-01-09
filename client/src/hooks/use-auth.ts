@@ -12,6 +12,7 @@ interface AuthRequest {
 interface RegisterResponse {
   id?: number;
   email: string;
+  username?: string;
   confirmed?: boolean;
   message?: string;
 }
@@ -28,6 +29,7 @@ export function useAuth() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [pendingConfirmEmail, setPendingConfirmEmail] = useState<string | null>(null);
+  const [pendingConfirmUsername, setPendingConfirmUsername] = useState<string | null>(null);
 
   const { data: user, isLoading, error } = useQuery({
     queryKey: [api.auth.me.path],
@@ -106,6 +108,7 @@ export function useAuth() {
         setLocation("/app/chat");
       } else {
         setPendingConfirmEmail(data.email);
+        setPendingConfirmUsername(data.username || null);
         toast({ 
           title: "Verification required", 
           description: "Please check your email for a verification code." 
@@ -122,11 +125,11 @@ export function useAuth() {
   });
 
   const confirmMutation = useMutation({
-    mutationFn: async ({ email, code }: { email: string; code: string }) => {
+    mutationFn: async ({ username, code }: { username: string; code: string }) => {
       const res = await fetch("/api/auth/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code }),
+        body: JSON.stringify({ username, code }),
         credentials: "include",
       });
       
@@ -139,6 +142,7 @@ export function useAuth() {
     },
     onSuccess: () => {
       setPendingConfirmEmail(null);
+      setPendingConfirmUsername(null);
       toast({ 
         title: "Email verified!", 
         description: "You can now log in with your credentials." 
@@ -167,7 +171,10 @@ export function useAuth() {
     },
   });
 
-  const clearPendingConfirm = () => setPendingConfirmEmail(null);
+  const clearPendingConfirm = () => {
+    setPendingConfirmEmail(null);
+    setPendingConfirmUsername(null);
+  };
 
   return {
     user,
@@ -181,6 +188,7 @@ export function useAuth() {
     isRegistering: registerMutation.isPending,
     isConfirming: confirmMutation.isPending,
     pendingConfirmEmail,
+    pendingConfirmUsername,
     clearPendingConfirm,
   };
 }

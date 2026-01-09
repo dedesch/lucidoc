@@ -18,6 +18,7 @@ export default function AuthPage() {
     isConfirming,
     user,
     pendingConfirmEmail,
+    pendingConfirmUsername,
     clearPendingConfirm
   } = useAuth();
   const [, setLocation] = useLocation();
@@ -42,8 +43,8 @@ export default function AuthPage() {
 
   const handleConfirmSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pendingConfirmEmail) {
-      confirm({ email: pendingConfirmEmail, code: confirmCode });
+    if (pendingConfirmUsername) {
+      confirm({ username: pendingConfirmUsername, code: confirmCode });
     }
   };
 

@@ -111,6 +111,7 @@ export async function registerRoutes(
       } else {
         res.status(201).json({ 
           email: normalizedEmail,
+          username: result.username,
           confirmed: false,
           message: "Please check your email for a verification code" 
         });
@@ -134,14 +135,13 @@ export async function registerRoutes(
 
   app.post("/api/auth/confirm", async (req, res) => {
     try {
-      const { email, code } = req.body;
+      const { username, code } = req.body;
       
-      if (!email || !code) {
-        return res.status(400).json({ message: "Email and confirmation code are required" });
+      if (!username || !code) {
+        return res.status(400).json({ message: "Username and confirmation code are required" });
       }
 
-      const normalizedEmail = email.toLowerCase().trim();
-      await cognitoConfirmSignUp(normalizedEmail, code);
+      await cognitoConfirmSignUp(username, code);
       
       res.json({ message: "Email confirmed successfully. You can now log in." });
     } catch (err: any) {

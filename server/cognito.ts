@@ -38,7 +38,7 @@ export interface CognitoUser {
   emailVerified: boolean;
 }
 
-export async function cognitoRegister(email: string, password: string): Promise<{ userSub: string; userConfirmed: boolean }> {
+export async function cognitoRegister(email: string, password: string): Promise<{ userSub: string; userConfirmed: boolean; username: string }> {
   if (!clientId) throw new Error("COGNITO_CLIENT_ID not configured");
 
   const normalizedEmail = email.toLowerCase().trim();
@@ -61,13 +61,13 @@ export async function cognitoRegister(email: string, password: string): Promise<
   return {
     userSub: response.UserSub || "",
     userConfirmed: response.UserConfirmed || false,
+    username: username, // Return username for confirmation
   };
 }
 
-export async function cognitoConfirmSignUp(email: string, code: string): Promise<void> {
+export async function cognitoConfirmSignUp(username: string, code: string): Promise<void> {
   if (!clientId) throw new Error("COGNITO_CLIENT_ID not configured");
 
-  const username = email.toLowerCase().trim();
   const secretHash = computeSecretHash(username);
 
   const command = new ConfirmSignUpCommand({
